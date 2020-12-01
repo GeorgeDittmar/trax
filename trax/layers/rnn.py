@@ -40,15 +40,20 @@ class LSTMCell(base.Layer):
                n_units,
                forget_bias=1.0,
                kernel_initializer=initializers.GlorotUniformInitializer(),
-               bias_initializer=initializers.RandomNormalInitializer(1e-6)):
+               bias_initializer=initializers.RandomNormalInitializer(1e-6),
+               bidirectional=False):
     super().__init__(n_in=2, n_out=2)
     self._n_units = n_units
     self._forget_bias = forget_bias
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
+    self._bidirectional = bidirectional
 
   def forward(self, inputs):
     x, lstm_state = inputs
+
+    if self._bidirectional:
+      x = jnp.flip(x, axis=1)
 
     # LSTM state consists of c and h.
     c, h = jnp.split(lstm_state, 2, axis=-1)
@@ -101,6 +106,14 @@ def LSTM(n_units):
       name=f'LSTM_{n_units}', sublayers_to_print=[]
   )
 
+def BidirectionLSTM(n_units):
+  """Bidirectional LSTM running on axis 1."""
+  zero_state = MakeZeroState(depth_multiplier=2)  # pylint: disable=no-value-for-parameter
+  # need to get the reversed input and concat the output of the two lstms
+  return cb.Serial(cb.Branch([], zero_state),
+        cb.Parallel(cb.Scan(LSTMCell(n_units=n_units)),
+        cb.Scan(LSTMCell(n_units=n_units, bidirectional=True))),
+        cb.Select([0], n_in=2))
 
 class GRUCell(base.Layer):
   """Builds a traditional GRU cell with dense internal transformations.
