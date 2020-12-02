@@ -188,8 +188,10 @@ def BidirectionalGRU(n_units):
   zero_state = MakeZeroState(depth_multiplier=1)  # pylint: disable=no-value-for-parameter
   return cb.Serial(
       cb.Branch([], zero_state),
-      cb.Parallel(
-        [cb.Scan(GRUCell(n_units=n_units), axis=1)]),
+      cb.Parallel([
+        cb.Scan(GRUCell(n_units=n_units), axis=1),
+        cb.Scan(GRUCell(n_units=n_units, bidirectional=True), axis=1)
+        ]),
       cb.Select([0], n_in=2),  # Drop RNN state.
       # Set the name to GRU and don't print sublayers.
       name=f'Bidirectional_GRU_{n_units}', sublayers_to_print=[]
