@@ -111,9 +111,12 @@ def BidirectionLSTM(n_units):
   zero_state = MakeZeroState(depth_multiplier=2)  # pylint: disable=no-value-for-parameter
   # need to get the reversed input and concat the output of the two lstms
   return cb.Serial(cb.Branch([], zero_state),
-        cb.Parallel(cb.Scan(LSTMCell(n_units=n_units)),
-        cb.Scan(LSTMCell(n_units=n_units, bidirectional=True))),
-        cb.Select([0], n_in=2))
+        cb.Parallel([
+          cb.Scan(LSTMCell(n_units=n_units)),
+          cb.Scan(LSTMCell(n_units=n_units, bidirectional=True))
+        ]),
+        cb.Select([0], n_in=2),
+        name=f'Bidirectional_LSTM_{n_units}', sublayers_to_print=[])
 
 class GRUCell(base.Layer):
   """Builds a traditional GRU cell with dense internal transformations.
@@ -125,16 +128,21 @@ class GRUCell(base.Layer):
                n_units,
                forget_bias=0.0,
                kernel_initializer=initializers.RandomUniformInitializer(0.01),
-               bias_initializer=initializers.RandomNormalInitializer(1e-6)):
+               bias_initializer=initializers.RandomNormalInitializer(1e-6),
+               bidirectional=False):
     super().__init__(n_in=2, n_out=2)
     self._n_units = n_units
     self._forget_bias = forget_bias
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
+    self._bidirectional = bidirectional
 
   def forward(self, inputs):
     x, gru_state = inputs
 
+    if self._bidirectional:
+      x = jnp.flip(x, axis=1)
+      
     # Dense layer on the concatenation of x and h.
     w1, b1, w2, b2 = self.weights
     y = jnp.dot(jnp.concatenate([x, gru_state], axis=-1), w1) + b1
@@ -175,6 +183,17 @@ def GRU(n_units):
       name=f'GRU_{n_units}', sublayers_to_print=[]
   )
 
+def BidirectionalGRU(n_units):
+  """GRU running on axis 1."""
+  zero_state = MakeZeroState(depth_multiplier=1)  # pylint: disable=no-value-for-parameter
+  return cb.Serial(
+      cb.Branch([], zero_state),
+      cb.Parallel(
+        [cb.Scan(GRUCell(n_units=n_units), axis=1)]),
+      cb.Select([0], n_in=2),  # Drop RNN state.
+      # Set the name to GRU and don't print sublayers.
+      name=f'Bidirectional_GRU_{n_units}', sublayers_to_print=[]
+  )
 
 def ConvGRUCell(n_units, kernel_size=(3, 3)):
   """Builds a convolutional GRU.
